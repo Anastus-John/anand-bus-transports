@@ -1,10 +1,10 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const fs = require('fs');
 const path = require('path');
 const webpush = require('web-push');
 const nodemailer = require('nodemailer');
+const { Pool } = require('pg');
 
 const app = express();
 
@@ -19,8 +19,13 @@ app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ------------------------------------------------------------------
-// 2. CONFIGURATION: EMAIL (NODEMAILER) & WEB PUSH
+// 2. CONFIGURATION: DATABASE (SUPABASE POSTGRESQL), EMAIL & WEB PUSH
 // ------------------------------------------------------------------
+const pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: { rejectUnauthorized: false }
+});
+
 const transporter = nodemailer.createTransport({
     service: 'gmail',
     auth: {
@@ -37,25 +42,9 @@ if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
     );
 }
 
-// ------------------------------------------------------------------
-// 3. DATA PERSISTENCE
-// ------------------------------------------------------------------
-const DATA_FILE = path.join(__dirname, 'bookings.json');
-let bookings = [];
+// Memory stores for real-time clients and Web Push subscriptions
 let pushSubscriptions = [];
 let sseClients = [];
-
-if (fs.existsSync(DATA_FILE)) {
-    try {
-        bookings = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-    } catch (e) {
-        bookings = [];
-    }
-}
-
-function saveData() {
-    fs.writeFileSync(DATA_FILE, JSON.stringify(bookings, null, 2));
-}
 
 async function sendEmailNotifications(booking) {
     if (!process.env.GMAIL_USER || !process.env.GMAIL_PASS) return;
@@ -69,9 +58,9 @@ async function sendEmailNotifications(booking) {
             <p><strong>Booking ID:</strong> ${booking.id}</p>
             <p><strong>Customer:</strong> ${booking.name} (${booking.phone})</p>
             <p><strong>Route:</strong> ${booking.pickup} ➔ ${booking.destination}</p>
-            <p><strong>Date & Time:</strong> ${booking.dateTime}</p>
+            <p><strong>Date & Time:</strong> ${booking.dateTime || booking.date_time}</p>
             <p><strong>Passengers:</strong> ${booking.passengers}</p>
-            <p><a href="${booking.whatsappLink}">💬 Chat on WhatsApp</a></p>
+            <p><a href="${booking.whatsappLink || booking.whatsapp_link}">💬 Chat on WhatsApp</a></p>
         `
     };
 
@@ -83,9 +72,11 @@ async function sendEmailNotifications(booking) {
 }
 
 // ------------------------------------------------------------------
-// 4. API ENDPOINTS
+// 3. API ENDPOINTS
 // ------------------------------------------------------------------
-app.post('/api/bookings', (req, res) => {
+
+// POST: Create New Booking in Supabase Cloud DB
+app.post('/api/bookings', async (req, res) => {
     try {
         const { name, phone, email, pickup, destination, dateTime, passengers, budget, notes } = req.body;
         if (!name || !phone || !pickup || !destination || !dateTime) {
@@ -93,28 +84,37 @@ app.post('/api/bookings', (req, res) => {
         }
 
         const cleanPhone = phone.replace(/[^0-9]/g, '');
+        const bookingId = 'AB-' + Date.now().toString().slice(-6);
         const whatsappText = encodeURIComponent(`Hello ${name}, thank you for inquiring with Anand Bus Transports for your trip from ${pickup} to ${destination} on ${dateTime}.`);
+        const whatsappLink = `https://wa.me/91${cleanPhone}?text=${whatsappText}`;
 
-        const newBooking = {
-            id: 'AB-' + Date.now().toString().slice(-6),
-            name,
-            phone: cleanPhone,
-            email: email || 'N/A',
-            pickup,
-            destination,
-            dateTime,
-            passengers: parseInt(passengers),
-            budget: budget || 'Negotiable',
-            notes: notes || '',
-            whatsappLink: `https://wa.me/91${cleanPhone}?text=${whatsappText}`,
-            status: 'PENDING_QUOTE',
-            createdAt: new Date().toISOString()
-        };
+        const insertQuery = `
+            INSERT INTO bookings (id, name, phone, email, pickup, destination, date_time, passengers, budget, notes, whatsapp_link, status)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+            RETURNING *;
+        `;
+        const values = [
+            bookingId, 
+            name, 
+            cleanPhone, 
+            email || 'N/A', 
+            pickup, 
+            destination, 
+            dateTime, 
+            parseInt(passengers), 
+            budget || 'Negotiable', 
+            notes || '', 
+            whatsappLink, 
+            'PENDING_QUOTE'
+        ];
+        
+        const result = await pool.query(insertQuery, values);
+        const newBooking = result.rows[0];
 
-        bookings.unshift(newBooking);
-        saveData();
-
+        // 1. Broadcast to SSE connected admin clients
         sseClients.forEach(c => c.res.write(`data: ${JSON.stringify(newBooking)}\n\n`));
+
+        // 2. Trigger Web Push Notifications
         pushSubscriptions.forEach(sub => {
             webpush.sendNotification(sub, JSON.stringify({
                 title: '🚨 NEW BUS BOOKING RECEIVED!',
@@ -123,15 +123,28 @@ app.post('/api/bookings', (req, res) => {
             })).catch(() => {});
         });
 
+        // 3. Trigger Email Alerts
         sendEmailNotifications(newBooking);
+
         return res.status(201).json({ success: true, booking: newBooking });
     } catch (err) {
-        return res.status(500).json({ success: false, message: 'Server error' });
+        console.error('Database Error:', err);
+        return res.status(500).json({ success: false, message: 'Database error' });
     }
 });
 
-app.get('/api/bookings', (req, res) => res.json({ success: true, count: bookings.length, bookings }));
+// GET: Fetch All Bookings from Supabase Cloud DB
+app.get('/api/bookings', async (req, res) => {
+    try {
+        const result = await pool.query('SELECT * FROM bookings ORDER BY created_at DESC');
+        return res.json({ success: true, count: result.rows.length, bookings: result.rows });
+    } catch (err) {
+        console.error('Fetch Error:', err);
+        return res.status(500).json({ success: false, message: 'Database query error' });
+    }
+});
 
+// GET: Real-time Server-Sent Events (SSE) Stream
 app.get('/api/live-stream', (req, res) => {
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
@@ -141,15 +154,17 @@ app.get('/api/live-stream', (req, res) => {
     req.on('close', () => sseClients = sseClients.filter(c => c.res !== res));
 });
 
+// POST: Subscribe Admin Device to Web Push Notifications
 app.post('/api/subscribe-push', (req, res) => {
     pushSubscriptions.push(req.body);
     res.status(201).json({ success: true });
 });
 
+// GET: Provide VAPID Public Key to Frontend
 app.get('/api/vapid-public-key', (req, res) => res.json({ publicKey: process.env.VAPID_PUBLIC_KEY || '' }));
 
 // ------------------------------------------------------------------
-// 5. SERVER STARTUP
+// 4. SERVER STARTUP
 // ------------------------------------------------------------------
 const PORT = process.env.PORT || 8000;
 app.listen(PORT, () => {
