@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Anand Bus Transports | Book Luxury Tour Buses</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 text-gray-800 font-sans">
+
+    <!-- Hero Header -->
+    <header class="bg-slate-900 text-white py-12 px-4 text-center border-b border-amber-500/30">
+        <h1 class="text-3xl md:text-5xl font-black text-amber-400 tracking-tight">ANAND BUS TRANSPORTS</h1>
+        <p class="text-sm md:text-base text-gray-300 mt-2">Premium Tour Bus Services • Tirunelveli | Tuticorin | Madurai | Nagercoil | Kanyakumari</p>
+        <div class="mt-4 flex justify-center space-x-2 text-xs text-amber-300 font-medium">
+            <span>✓ School & College Tours</span> • 
+            <span>✓ Pilgrimage Trips</span> • 
+            <span>✓ Corporate Tenders</span> • 
+            <span>✓ Weddings</span>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="max-w-4xl mx-auto my-10 px-4">
+        <div class="bg-white rounded-2xl shadow-xl overflow-hidden border border-gray-200">
+            <div class="bg-slate-900 p-6 text-white border-b border-gray-800">
+                <h2 class="text-xl font-bold">Get an Instant Trip Quotation</h2>
+                <p class="text-xs text-slate-300 mt-1">Fill out your tour requirements below. Our team will verify bus availability and send you a custom quote.</p>
+            </div>
+
+            <form id="publicBookingForm" class="p-6 md:p-8 space-y-5">
+                <div id="statusAlert" class="hidden text-sm p-4 rounded-lg font-medium"></div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Your Name / Organization *</label>
+                        <input type="text" id="name" required placeholder="e.g. John / St. Xavier College" class="w-full text-sm px-4 py-3 border rounded-lg focus:ring-2 focus:ring-amber-500 outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Phone Number (WhatsApp) *</label>
+                        <input type="tel" id="phone" required placeholder="9876543210" class="w-full text-sm px-4 py-3 border rounded-lg focus:ring-2 focus:ring-amber-500 outline-none">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Email Address</label>
+                        <input type="email" id="email" placeholder="name@example.com" class="w-full text-sm px-4 py-3 border rounded-lg focus:ring-2 focus:ring-amber-500 outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Estimated Budget (₹)</label>
+                        <input type="text" id="budget" placeholder="e.g. 25000" class="w-full text-sm px-4 py-3 border rounded-lg focus:ring-2 focus:ring-amber-500 outline-none">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Pickup Location *</label>
+                        <input type="text" id="pickup" required placeholder="e.g. Tirunelveli Junction / Tuticorin" class="w-full text-sm px-4 py-3 border rounded-lg focus:ring-2 focus:ring-amber-500 outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Destination *</label>
+                        <input type="text" id="destination" required placeholder="e.g. Madurai / Rameswaram / Velankanni" class="w-full text-sm px-4 py-3 border rounded-lg focus:ring-2 focus:ring-amber-500 outline-none">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Departure Date & Time *</label>
+                        <input type="datetime-local" id="dateTime" required class="w-full text-sm px-4 py-3 border rounded-lg focus:ring-2 focus:ring-amber-500 outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Total Passengers *</label>
+                        <input type="number" id="passengers" min="1" required placeholder="45" class="w-full text-sm px-4 py-3 border rounded-lg focus:ring-2 focus:ring-amber-500 outline-none">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Trip Details / Specific Requirements</label>
+                    <textarea id="notes" rows="3" placeholder="Specify if AC/Non-AC required, multi-day itinerary details, luggage space, etc." class="w-full text-sm px-4 py-3 border rounded-lg focus:ring-2 focus:ring-amber-500 outline-none"></textarea>
+                </div>
+
+                <button type="submit" id="submitBtn" class="w-full bg-amber-500 hover:bg-amber-600 text-slate-950 font-black py-4 rounded-lg text-base shadow-lg transition duration-200">
+                    REQUEST PRICE QUOTE
+                </button>
+            </form>
+        </div>
+    </main>
+
+    <script>
+        document.getElementById('publicBookingForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const btn = document.getElementById('submitBtn');
+            const alertBox = document.getElementById('statusAlert');
+            
+            btn.disabled = true;
+            btn.innerText = 'Submitting Request...';
+            alertBox.classList.add('hidden');
+
+            const payload = {
+                name: document.getElementById('name').value,
+                phone: document.getElementById('phone').value,
+                email: document.getElementById('email').value,
+                pickup: document.getElementById('pickup').value,
+                destination: document.getElementById('destination').value,
+                dateTime: document.getElementById('dateTime').value,
+                passengers: document.getElementById('passengers').value,
+                budget: document.getElementById('budget').value,
+                notes: document.getElementById('notes').value
+            };
+
+            try {
+                const res = await fetch('/api/bookings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                if (data.success) {
+                    alertBox.className = 'text-sm p-4 rounded-lg font-medium bg-emerald-100 text-emerald-800 border border-emerald-300';
+                    alertBox.innerText = `✅ Success! Your trip request (ID: ${data.booking.id}) has been sent. We will call you back shortly!`;
+                    alertBox.classList.remove('hidden');
+                    document.getElementById('publicBookingForm').reset();
+                } else {
+                    throw new Error(data.message);
+                }
+            } catch (err) {
+                alertBox.className = 'text-sm p-4 rounded-lg font-medium bg-red-100 text-red-800 border border-red-300';
+                alertBox.innerText = err.message || 'Submission error.';
+                alertBox.classList.remove('hidden');
+            } finally {
+                btn.disabled = false;
+                btn.innerText = 'REQUEST PRICE QUOTE';
+            }
+        });
+    </script>
+</body>
+</html>
